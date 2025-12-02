@@ -8,7 +8,7 @@
 #include "rtp.c"
 
 // Video streaming parameters
-#define VIDEO_FPS 15
+#define VIDEO_FPS 5
 #define FRAME_DURATION_US (1000000 / VIDEO_FPS)  // ~33333 microseconds per frame
 #define PACKETS_PER_FRAME 10  // Simulate 10 packets per video frame
 
