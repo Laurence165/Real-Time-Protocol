@@ -196,10 +196,10 @@ int main(int argc, char *argv[]) {
 
     // Write to file if not stdout mode
     if (!output_to_stdout) {
-        FILE *out = fopen("reconstructed_vid.mp4", "wb");
+        FILE *out = fopen("reconstructed_vid.txt", "wb");
         fwrite(reconstructed_video, 1, total_bytes, out);
         fclose(out);
-        fprintf(stderr, "\nVideo saved to reconstructed_vid.mp4\n");
+        fprintf(stderr, "\nVideo saved to reconstructed_vid.txt\n");
     }
 
     fprintf(stderr, "\n=== RTP Statistics ===\n");
