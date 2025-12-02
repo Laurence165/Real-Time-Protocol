@@ -14,11 +14,12 @@
 
 int main(int argc, char *argv[]) {
     // Open image file for reading
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <video_file>\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <video_file> <receiver_ip> \n", argv[0]);
         return 1;
     }
     FILE *image_file = fopen(argv[1], "rb");
+    char *ip = argv[2];
     if (!image_file) {
         perror("Unable to open image file");
         return 1;
@@ -43,7 +44,7 @@ int main(int argc, char *argv[]) {
     // Set up server address (receiver)
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(5000);  // Receiver port
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");  // Localhost
+    server_addr.sin_addr.s_addr = inet_addr(ip);  // Localhost
 
     // Calculate number of chunks (for dynamic chunking)
     int num_chunks = (file_size / CHUNK_SIZE) + (file_size % CHUNK_SIZE != 0);  // Handle remainder
