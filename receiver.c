@@ -275,28 +275,49 @@ int add_to_jitter_buffer(JitterBuffer *jb, unsigned char *payload, int payload_s
         fflush(stderr);
     }
     
-    // Detect loss
+    // Detect loss and reordering
     if (stats->first_packet) {
         stats->first_packet = 0;
     } else {
         uint16_t expected_seq = stats->last_seq + 1;
         if (seq != expected_seq) {
-            int gap = (seq - expected_seq) & 0xFFFF;
-            if (gap > 0 && gap < 1000) {  // Reasonable gap
-                stats->lost_packets += gap;
-                fprintf(stderr, "Loss detected: expected seq=%u, got seq=%u (lost %d)\n", 
+            int16_t gap = (int16_t)(seq - expected_seq);  // Signed for negative detection
+            
+            if (gap > 0 && gap < 100) {
+                // Forward jump (potential loss or out-of-order arrival)
+                // Don't immediately count as loss - jitter buffer will handle it
+                fprintf(stderr, "[SEQ] Forward jump: expected seq=%u, got seq=%u (gap=%d)\n", 
                        expected_seq, seq, gap);
                 fflush(stderr);
-            } else if (gap > 1000) {
-                // Likely reordering
+                
+                // Mark as potential loss (jitter buffer will correct if packets arrive late)
+                stats->lost_packets += gap;
+                
+            } else if (gap < 0) {
+                // Backward jump - packet arrived LATE (reordering!)
                 stats->reordered_packets++;
-                fprintf(stderr, "Reordering: seq=%u arrived late\n", seq);
+                stats->lost_packets--;  // Correct the false loss detection
+                fprintf(stderr, "[REORDER] seq=%u arrived late (expected %u)\n", seq, expected_seq);
                 fflush(stderr);
+                
+            } else if (gap >= 100) {
+                // Huge forward gap - definitely loss or wraparound
+                if (gap < 30000) {  // Not wraparound
+                    stats->lost_packets += gap;
+                    fprintf(stderr, "[LOSS] Large gap: expected seq=%u, got seq=%u (lost %d)\n", 
+                           expected_seq, seq, gap);
+                    fflush(stderr);
+                } else {
+                    // Likely sequence number wraparound or very late packet
+                    stats->reordered_packets++;
+                    fprintf(stderr, "[REORDER] seq=%u arrived very late (wraparound?)\n", seq);
+                    fflush(stderr);
+                }
             }
         }
     }
     
-    // Update last seen sequence
+    // Update last seen sequence (only if newer)
     if (((int16_t)(seq - stats->last_seq)) > 0) {
         stats->last_seq = seq;
     }
