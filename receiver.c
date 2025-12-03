@@ -200,33 +200,50 @@ int main(int argc, char *argv[]) {
     fflush(stderr);
     
     // Drain remaining packets from jitter buffer
-    fprintf(stderr, "[STREAM] Draining jitter buffer...\n");
+    fprintf(stderr, "[STREAM] Draining jitter buffer (skipping missing packets)...\n");
     fflush(stderr);
     
     unsigned char drain_payload[CHUNK_SIZE];
     int drain_size, drain_last;
     int drained_count = 0;
+    int skipped_count = 0;
+    int max_drain_attempts = JITTER_BUFFER_SIZE;  // Prevent infinite loop
     
-    while (get_from_jitter_buffer(&jb, drain_payload, &drain_size, &drain_last, 1)) {
-        drained_count++;
-        if (output_to_stdout) {
-            fwrite(drain_payload, 1, drain_size, output_file);
-            fflush(output_file);
+    for (int attempt = 0; attempt < max_drain_attempts && jb.buffer_count > 0; attempt++) {
+        uint16_t expected_seq = (jb.base_seq + jb.head) & 0xFFFF;
+        int buffer_idx = jb.head % JITTER_BUFFER_SIZE;
+        
+        if (jb.entries[buffer_idx].filled) {
+            // Packet available - drain it
+            if (get_from_jitter_buffer(&jb, drain_payload, &drain_size, &drain_last, 1)) {
+                drained_count++;
+                if (output_to_stdout) {
+                    fwrite(drain_payload, 1, drain_size, output_file);
+                    fflush(output_file);
+                } else {
+                    memcpy(reconstructed_video + total_bytes, drain_payload, drain_size);
+                }
+                total_bytes += drain_size;
+            }
         } else {
-            memcpy(reconstructed_video + total_bytes, drain_payload, drain_size);
+            // Missing packet - skip it
+            fprintf(stderr, "[DRAIN] Skipping missing seq=%u\n", expected_seq);
+            fflush(stderr);
+            jb.head++;  // Move past missing packet
+            skipped_count++;
         }
-        total_bytes += drain_size;
     }
     
-    fprintf(stderr, "[STREAM] Drained %d packets from buffer\n", drained_count);
+    fprintf(stderr, "[STREAM] Drained %d packets, skipped %d missing, final occupancy: %d\n", 
+            drained_count, skipped_count, jb.buffer_count);
     fflush(stderr);
 
     // Write to file if not stdout mode
     if (!output_to_stdout) {
-        FILE *out = fopen("reconstructed_vid.txt", "wb");
+        FILE *out = fopen("reconstructed_vid.mp4", "wb");
         fwrite(reconstructed_video, 1, total_bytes, out);
         fclose(out);
-        fprintf(stderr, "\nVideo saved to reconstructed_vid.txt\n");
+        fprintf(stderr, "\nVideo saved to reconstructed_vid.mp4\n");
     }
 
     fprintf(stderr, "\n=== RTP Statistics ===\n");

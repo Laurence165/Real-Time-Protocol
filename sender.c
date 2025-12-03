@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
         printf("Sent pkt %d (frame=%d, ts=%u, M=%d, %d bytes)\n",
                i, current_frame, frame_timestamp, is_last_in_frame, bytes_sent);
     
-        // Spread packets evenly within the frame
+        // Spread packets evenly within the frame  
         usleep(FRAME_DURATION_US / PACKETS_PER_FRAME);
     
         // After last packet of the frame, ensure we haven't fallen behind
