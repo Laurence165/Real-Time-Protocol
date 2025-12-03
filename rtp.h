@@ -22,7 +22,13 @@ typedef struct {
 // High-level API (Application Layer)
 int send_rtp_packet(int sockfd, struct sockaddr_in *server_addr, unsigned char *payload, int payload_size, int is_last_packet);
 int receive_rtp_packet(int sockfd, unsigned char *payload, int *payload_size, int *is_last_packet, struct sockaddr_in *client_addr);
-
+//int send_rtp_packet_with_timestamp(int sockfd, struct sockaddr_in *server_addr, unsigned char *payload, int payload_size, uint32_t timestamp, int is_last_packet);
+int send_rtp_packet_with_timestamp(int sockfd,
+    struct sockaddr_in *server_addr,
+    unsigned char *payload,
+    int payload_size,
+    uint32_t timestamp,
+    int is_last_packet);
 // Low-level API (Internal/Library use)
 void build_rtp_packet(RTPHeader *header, unsigned char *payload, int payload_size, unsigned char *packet);
 void unpack_rtp_header(unsigned char *packet, RTPHeader *header);

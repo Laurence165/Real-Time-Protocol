@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
+#include <time.h>
 #include "rtp.h"
 #include "rtp.c"
 
@@ -11,6 +12,7 @@
 #define VIDEO_FPS 5
 #define FRAME_DURATION_US (1000000 / VIDEO_FPS)  // ~33333 microseconds per frame
 #define PACKETS_PER_FRAME 10  // Simulate 10 packets per video frame
+#define RTP_CLOCK_RATE 90000  // Standard RTP clock rate for video (90 kHz)
 
 int main(int argc, char *argv[]) {
     // Open image file for reading
@@ -55,44 +57,61 @@ int main(int argc, char *argv[]) {
     struct timeval start_time, current_time;
     gettimeofday(&start_time, NULL);
     
-    // Send video in chunks with frame-based timing
+    // Random initial RTP timestamp (RTP best practice)
+    srand(time(NULL));
+    uint32_t base_timestamp = (uint32_t)(rand() & 0xFFFFFFFF);
+    
+    printf("Initial RTP timestamp: %u\n", base_timestamp);
+    printf("RTP clock rate: 90000 Hz (standard for video)\n");
+    printf("Timestamp increment per frame: %d (90000/%d FPS)\n\n", 90000/VIDEO_FPS, VIDEO_FPS);
+    
     for (int i = 0; i < num_chunks; i++) {
-    //     int current_frame = i / PACKETS_PER_FRAME;
-    // uint32_t frame_timestamp = current_frame * (90000 / VIDEO_FPS);  // Frame's timestamp
+        int current_frame = i / PACKETS_PER_FRAME;
+    
+        // Correct timestamp
+        uint32_t frame_timestamp =
+            base_timestamp + current_frame * (RTP_CLOCK_RATE / VIDEO_FPS);
     
         int offset = i * CHUNK_SIZE;
-        int payload_size = (i == num_chunks - 1) ? (file_size - offset) : CHUNK_SIZE;
+        int payload_size = (i == num_chunks - 1)
+                            ? (file_size - offset)
+                            : CHUNK_SIZE;
+    
+        // Marker bit = last packet of *frame*, not whole file
+        int is_last_in_frame = ((i + 1) % PACKETS_PER_FRAME == 0);
+    
+        int bytes_sent = send_rtp_packet_with_timestamp(
+            sockfd, &server_addr,
+            buffer + offset,
+            payload_size,
+            frame_timestamp,
+            is_last_in_frame
+        );
         
-        int is_last_packet = (i == num_chunks - 1);  // Check if this is the last packet
-        
-        // Send RTP packet (RTP library handles all header logic)
-        int bytes_sent = send_rtp_packet(sockfd, &server_addr, buffer + offset, payload_size, is_last_packet);
         if (bytes_sent < 0) {
             fprintf(stderr, "Failed to send packet %d\n", i);
             break;
         }
-        
-        int current_frame = i / PACKETS_PER_FRAME;
-        printf("Sent packet %d/%d (frame %d, %d bytes, last=%d)\n", i, num_chunks, current_frame, bytes_sent, is_last_packet);
-        
-        // Simulate frame-based timing: delay at frame boundaries
-        if ((i + 1) % PACKETS_PER_FRAME == 0 && !is_last_packet) {
-            // Calculate how long we should wait to maintain frame rate
-            int expected_frame = (i + 1) / PACKETS_PER_FRAME;
-            long expected_time_us = expected_frame * FRAME_DURATION_US;
-            
+    
+        printf("Sent pkt %d (frame=%d, ts=%u, M=%d, %d bytes)\n",
+               i, current_frame, frame_timestamp, is_last_in_frame, bytes_sent);
+    
+        // Spread packets evenly within the frame
+        usleep(FRAME_DURATION_US / PACKETS_PER_FRAME);
+    
+        // After last packet of the frame, ensure we haven't fallen behind
+        if (is_last_in_frame) {
             gettimeofday(&current_time, NULL);
-            long elapsed_us = (current_time.tv_sec - start_time.tv_sec) * 1000000 +
-                             (current_time.tv_usec - start_time.tv_usec);
-            //long jitter_delay_us = rand() % 100000;
-            long sleep_time_us = expected_time_us - elapsed_us;
-            if (sleep_time_us > 0) {
-                usleep(sleep_time_us );//+ //jitter_delay_us);
-                printf("  [Frame %d complete - waited %ld µs to maintain %d FPS]\n", 
-                       current_frame, sleep_time_us, VIDEO_FPS);
-            }
+            long elapsed = (current_time.tv_sec - start_time.tv_sec) * 1000000 +
+                           (current_time.tv_usec - start_time.tv_usec);
+    
+            long expected = (long)(current_frame + 1) * FRAME_DURATION_US;
+    
+            if (elapsed < expected)
+                usleep(expected - elapsed);
         }
     }
+    
 
     gettimeofday(&current_time, NULL);
     long total_time_ms = ((current_time.tv_sec - start_time.tv_sec) * 1000000 +

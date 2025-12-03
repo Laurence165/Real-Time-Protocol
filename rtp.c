@@ -56,6 +56,34 @@ int send_rtp_packet(int sockfd, struct sockaddr_in *server_addr, unsigned char *
     return bytes_sent;
 }
 
+int send_rtp_packet_with_timestamp(
+    int sockfd,
+    struct sockaddr_in *server_addr,
+    unsigned char *payload,
+    int payload_size,
+    uint32_t timestamp,
+    int is_last_packet) {
+    // Build header
+    RTPHeader header;
+    header.V = 2;
+    header.P = 0;
+    header.X = 0;
+    header.CC = 0;
+    header.M = is_last_packet ? 1 : 0;
+    header.PT = 96;  // Dynamic PT for video
+
+    assign_sequence_number(&header);
+    assign_ssrc(&header);
+    assign_timestamp(&header, timestamp);
+
+    unsigned char packet[RTP_HEADER_SIZE + payload_size];
+    build_rtp_packet(&header, payload, payload_size, packet);
+
+    int packet_size = RTP_HEADER_SIZE + payload_size;
+    return sendto(sockfd, packet, packet_size, 0,
+                  (struct sockaddr *)server_addr, sizeof(*server_addr));
+}
+
 // High-level function to receive an RTP packet
 int receive_rtp_packet(int sockfd, unsigned char *payload, int *payload_size, int *is_last_packet, struct sockaddr_in *client_addr) {
     // Receive raw packet
